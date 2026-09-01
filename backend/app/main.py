@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.api.ai_controller import router as ai_router
 from app.api.source_controller import router as source_router
 
 origins = [
@@ -19,6 +20,7 @@ app.add_middleware(
 
 
 app.include_router(source_router, prefix="/api")
+app.include_router(ai_router, prefix="/api")
 
 
 @app.get("/health")

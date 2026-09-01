@@ -102,6 +102,12 @@ body {
   border-bottom: 2px solid #e0e0e0;
 }
 
+.sources-header > div {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .sources-header h2 {
   font-size: 1.75rem;
   font-weight: 600;
@@ -115,6 +121,54 @@ body {
   padding: 0.5rem 1rem;
   border-radius: 20px;
   font-weight: 500;
+}
+
+/* Assessment Buttons */
+.assess-button,
+.assess-all-button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.assess-button {
+  background: #4caf50;
+  color: white;
+}
+
+.assess-button:hover:not(:disabled) {
+  background: #45a049;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.assess-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.assess-all-button {
+  background: #2196f3;
+  color: white;
+  font-size: 1rem;
+}
+
+.assess-all-button:hover:not(:disabled) {
+  background: #1976d2;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.assess-all-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* Table Styles */
