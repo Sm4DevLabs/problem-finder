@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+
+from app.api.source_controller import router as source_router
 
 origins = [
     "http://localhost:5173",  # React development server
@@ -14,6 +17,27 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+
+app.include_router(source_router, prefix="/api")
+
+
 @app.get("/health")
-async def read_root():
-    return {"status": "OK", "service": "Problem Finder", "version": "1.0.0"}
+async def read_db_health():
+    from app.database.database_session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        try:
+            await session.execute(text("SELECT 1"))
+            return {
+                "status": "OK",
+                "service": "Problem Finder",
+                "version": "1.0.0",
+                "database": "Connected",
+            }
+        except Exception as e:
+            return {
+                "status": "ERROR",
+                "service": "Problem Finder",
+                "version": "1.0.0",
+                "database": str(e),
+            }
