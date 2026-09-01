@@ -3,7 +3,7 @@ from uuid import UUID
 from app.database.database_session import DbSession
 from app.repositories import source_repository
 from app.schemas.source_schema import SourceCreate
-from app.services import ollama_service
+from app.services import evidence_service, ollama_service
 
 
 async def get_all_sources(session: DbSession):
@@ -28,14 +28,15 @@ async def delete_source(session: DbSession, source_id: UUID):
 
 async def assess_source(session: DbSession, source):
     """
-    Assess a source using Ollama AI to determine the best data collection method.
+    Assess a source using Ollama AI with collected evidence.
 
-    Business Logic Flow:
-    1. Extract source information (name, type, URL)
-    2. Send to Ollama for AI analysis
-    3. Receive structured assessment result
-    4. Update source in database with findings
-    5. Return updated source
+    NEW Flow with Evidence:
+    1. Collect evidence (API docs, robots.txt, etc.)
+    2. Build evidence summary for AI
+    3. Send evidence + source info to Ollama
+    4. Receive structured assessment result
+    5. Update source in database with findings
+    6. Return updated source
 
     Args:
         session: Database session
@@ -47,18 +48,50 @@ async def assess_source(session: DbSession, source):
     Raises:
         Exception if Ollama fails or returns invalid data
     """
-    # Step 1: Call Ollama AI to analyze this source
-    assessment = await ollama_service.assess_source_with_ollama(
+    from datetime import datetime, timezone
+    from app.database.database_session import settings
+
+    # Step 1: Collect evidence for this source
+    evidence_count = await evidence_service.collect_evidence_for_source(
+        session=session,
+        source_id=source.id,
+        source_name=source.name,
+        homepage_url=source.homepage_url,
+    )
+
+    # Step 2: Get evidence summary for AI
+    evidence_summary = await evidence_service.get_evidence_summary(
+        session=session,
+        source_id=source.id,
+    )
+
+    # Step 3: Call Ollama AI with evidence
+    assessment = await ollama_service.assess_source_with_evidence(
         source_name=source.name,
         source_type=source.source_type,
         homepage_url=source.homepage_url or "No URL provided",
+        evidence_summary=evidence_summary,
     )
 
-    # Step 2: Update the source with AI recommendations
+    # Step 4: Update the source with AI recommendations AND metadata
     source.collection_method = assessment.recommended_method
     source.assessment_status = "ASSESSED"
 
-    # Step 3: Commit changes to database
+    # Save assessment metadata
+    source.assessment_reason = assessment.reason
+    source.assessment_confidence = assessment.confidence
+    source.assessment_model = settings.OLLAMA_MODEL
+    source.assessed_at = datetime.now(timezone.utc)
+
+    # Save evidence summary in source for quick reference
+    if evidence_summary.has_documented_api:
+        source.evidence_summary = f"API documentation found at {evidence_summary.api_docs_url}"
+    elif evidence_summary.evidence_quality == "PARTIAL":
+        source.evidence_summary = f"Evidence collected: {evidence_count} records"
+    else:
+        source.evidence_summary = "No evidence collected"
+
+    # Step 5: Commit changes to database
     await session.commit()
     await session.refresh(source)
 
