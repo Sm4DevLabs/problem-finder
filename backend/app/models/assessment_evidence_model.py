@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import ForeignKey, String, Text, func
+from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.database_session import Base
@@ -13,9 +13,17 @@ class AssessmentEvidence(Base):
 
     Each record represents one piece of evidence (API docs, robots.txt, etc.)
     fetched for a source to inform AI assessment decisions.
+
+    Unique constraint: (source_id, evidence_type, url)
+    This ensures idempotent evidence collection - one record per evidence item.
     """
 
     __tablename__ = "assessment_evidence"
+    __table_args__ = (
+        UniqueConstraint('source_id', 'evidence_type', 'url', name='uq_source_evidence_url'),
+        Index('ix_assessment_evidence_source_id', 'source_id'),
+        Index('ix_assessment_evidence_evidence_type', 'evidence_type'),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     source_id: Mapped[UUID] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)

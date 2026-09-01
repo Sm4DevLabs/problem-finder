@@ -89,17 +89,31 @@ Respond ONLY with valid JSON in this exact format:
   "evidence_needed": ["list of missing verification steps"]
 }}
 
-STRICT RULES:
-1. Choose API ONLY if evidence confirms a documented API exists
-2. Choose WEB_SCRAPING ONLY if no API was found AND robots.txt permits crawling
-3. Choose MANUAL when evidence is missing, contradictory, or unclear
-4. NEVER infer API existence without evidence
-5. Cite specific evidence in your reason (e.g., "API documentation found at...")
-6. Set confidence based on evidence quality:
-   - Complete evidence with API docs = 0.90-0.95
-   - Partial evidence (homepage + robots.txt) = 0.60-0.75
-   - No evidence or unclear = 0.30-0.50
-7. When uncertain, choose MANUAL and list what evidence is needed
+STRICT DECISION RULES:
+
+API:
+Choose ONLY when VALID evidence confirms an official API exists.
+This includes:
+- Official REST/GraphQL API documentation
+- Public GitHub organization/repositories that will be accessed via GitHub API
+
+WEB_SCRAPING:
+Choose ONLY when ALL of these are true:
+1. No suitable official API is confirmed in evidence
+2. robots.txt does not block the target content
+3. Evidence does not show bot blocking or authentication requirements
+4. There is no known restriction in the supplied evidence
+5. Homepage is accessible without authentication
+
+CRITICAL RULES:
+- NEVER treat public visibility as permission to automate
+- NEVER treat a CAPTCHA, sign-in page, or HTML error as API documentation
+- NEVER infer API existence without VALID evidence showing it
+- GitHub repositories accessed via GitHub API should be marked as API
+- Set confidence based on VALID evidence quality:
+  * API with VALID docs or GitHub repository = 0.90-0.95
+  * WEB_SCRAPING with clear robots.txt allowing access = 0.60-0.75
+  * Unclear or missing evidence = choose WEB_SCRAPING with low confidence (0.30-0.50) ONLY if robots.txt permits
 
 Respond with ONLY the JSON, no markdown or extra text."""
 
@@ -131,25 +145,36 @@ Respond with ONLY the JSON, no markdown or extra text."""
 
 
 def _build_evidence_context(evidence_summary: EvidenceSummary) -> str:
-    """Build evidence context string for AI prompt."""
+    """Build concise evidence context for AI - VALID evidence only."""
     lines = []
 
     if evidence_summary.evidence_quality == "NONE":
-        return "⚠️ NO EVIDENCE COLLECTED - Unable to verify API or access methods."
+        return """⚠️ NO VALID EVIDENCE COLLECTED
+- Unable to verify API availability
+- Unable to verify access methods or permissions
+- Recommend: MANUAL until evidence can be gathered"""
 
+    # VALID API documentation
     if evidence_summary.api_docs_url:
-        lines.append(f"✅ API Documentation: {evidence_summary.api_docs_url}")
-        if evidence_summary.api_docs_excerpt:
-            excerpt = evidence_summary.api_docs_excerpt[:500]
-            lines.append(f"   Excerpt: {excerpt}...")
+        lines.append(f"✅ VALID API Documentation Found:")
+        lines.append(f"   URL: {evidence_summary.api_docs_url}")
+        lines.append(f"   Status: Verified and accessible")
     else:
-        lines.append("❌ No API documentation found")
+        lines.append("❌ No valid API documentation found")
 
+    # VALID robots.txt
     if evidence_summary.robots_txt:
-        robots_excerpt = evidence_summary.robots_txt[:300]
-        lines.append(f"\n📄 robots.txt: {robots_excerpt}...")
+        # Extract key directives only
+        robots_lines = evidence_summary.robots_txt.split('\n')[:10]  # First 10 lines
+        key_directives = [line for line in robots_lines if any(
+            keyword in line.lower() for keyword in ['user-agent:', 'disallow:', 'allow:', 'sitemap:']
+        )]
+        if key_directives:
+            lines.append(f"\n📄 robots.txt (VALID):")
+            for directive in key_directives[:5]:  # Max 5 directives
+                lines.append(f"   {directive.strip()}")
     else:
-        lines.append("\n⚠️ robots.txt not found or not accessible")
+        lines.append("\n⚠️ robots.txt: Not found or blocked")
 
     if evidence_summary.homepage:
         lines.append(f"\n🏠 Homepage: {evidence_summary.homepage}")

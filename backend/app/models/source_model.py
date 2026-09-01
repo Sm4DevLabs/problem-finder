@@ -17,9 +17,10 @@ class Source(Base):
     source_type: Mapped[str] = mapped_column(nullable=False)
     homepage_url: Mapped[str | None] = mapped_column(nullable=True)
     collection_method: Mapped[str | None] = mapped_column(
-        SAEnum("API", "WEB_SCRAPING", "MANUAL", name="collection_method_enum"),
+        SAEnum("API", "WEB_SCRAPING", name="collection_method_enum"),
         nullable=True,
     )
+    is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
     assessment_status: Mapped[str | None] = mapped_column(nullable=True, default="PENDING")
 
     # Assessment metadata fields

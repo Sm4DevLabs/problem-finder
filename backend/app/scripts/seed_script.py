@@ -8,78 +8,112 @@ from app.models.source_model import Source
 
 async def seed_sources():
     """Seed the database with initial source data."""
+    # Start with 8 ACTIVE sources focused on real problems that can become apps
+    # Not open-source contribution tasks or datasets
     initial_sources = [
+        # 1. PEOPLE_SUBMITTED_PROBLEMS - Highest quality, explicitly curated problems
         {
             "name": "Razorpay Fix My Itch",
             "source_type": "PEOPLE_SUBMITTED_PROBLEMS",
             "homepage_url": "https://razorpay.com/m/fix-my-itch/",
-            "collection_method": "API",
+            "collection_method": None,  # Will be assessed
+            "is_active": True,
         },
         {
             "name": "ProblemHunt",
             "source_type": "PEOPLE_SUBMITTED_PROBLEMS",
             "homepage_url": "https://problemhunt.pro/",
-            "collection_method": "WEB_SCRAPING",
+            "collection_method": None,
+            "is_active": True,
+        },
+        # 2. COMMUNITY_PAIN_DISCUSSIONS - Real frustrations from various communities
+        {
+            "name": "Hacker News",
+            "source_type": "COMMUNITY_PAIN_DISCUSSIONS",
+            "homepage_url": "https://news.ycombinator.com/",
+            "collection_method": None,
+            "is_active": True,
         },
         {
             "name": "Reddit",
-            "source_type": "CUSTOMER_COMPLAINTS",
+            "source_type": "COMMUNITY_PAIN_DISCUSSIONS",
             "homepage_url": "https://www.reddit.com/",
-            "collection_method": "API",
+            "collection_method": None,
+            "is_active": True,
         },
         {
-            "name": "G2",
+            "name": "Stack Exchange",
+            "source_type": "COMMUNITY_PAIN_DISCUSSIONS",
+            "homepage_url": "https://stackexchange.com/",
+            "collection_method": None,
+            "is_active": True,
+        },
+        # 3. CUSTOMER_COMPLAINTS - Real consumer pain points
+        {
+            "name": "CFPB Consumer Complaint Database",
             "source_type": "CUSTOMER_COMPLAINTS",
-            "homepage_url": "https://www.g2.com/",
-            "collection_method": "MANUAL",
+            "homepage_url": "https://www.consumerfinance.gov/data-research/consumer-complaints/",
+            "collection_method": None,
+            "is_active": True,
         },
-        {
-            "name": "GitHub Issues",
-            "source_type": "OPEN_SOURCE_PROBLEMS",
-            "homepage_url": "https://github.com/issues",
-            "collection_method": "API",
-        },
-        {
-            "name": "Good First Issue",
-            "source_type": "OPEN_SOURCE_PROBLEMS",
-            "homepage_url": "https://goodfirstissue.dev/",
-            "collection_method": "API",
-        },
-        {
-            "name": "Devpost",
-            "source_type": "HACKATHON_CHALLENGES",
-            "homepage_url": "https://devpost.com/hackathons",
-            "collection_method": "WEB_SCRAPING",
-        },
-        {
-            "name": "Kaggle Competitions",
-            "source_type": "HACKATHON_CHALLENGES",
-            "homepage_url": "https://www.kaggle.com/competitions",
-            "collection_method": "API",
-        },
-        {
-            "name": "Challenge.gov",
-            "source_type": "CIVIC_PUBLIC_PROBLEMS",
-            "homepage_url": "https://www.challenge.gov/",
-            "collection_method": "WEB_SCRAPING",
-        },
+        # 4. CIVIC_PUBLIC_PROBLEMS - Public sector challenges
         {
             "name": "Civic Tech Field Guide",
             "source_type": "CIVIC_PUBLIC_PROBLEMS",
             "homepage_url": "https://directory.civictech.guide/",
-            "collection_method": "API",
+            "collection_method": None,
+            "is_active": True,
+        },
+        # 5. CHALLENGE_STATEMENTS - Well-defined real-world problems
+        {
+            "name": "Kaggle Competitions",
+            "source_type": "CHALLENGE_STATEMENTS",
+            "homepage_url": "https://www.kaggle.com/competitions",
+            "collection_method": None,
+            "is_active": True,
+        },
+        # INACTIVE sources - Will be added later as connectors are built
+        {
+            "name": "Indie Hackers",
+            "source_type": "PEOPLE_SUBMITTED_PROBLEMS",
+            "homepage_url": "https://www.indiehackers.com/",
+            "collection_method": None,
+            "is_active": False,
         },
         {
-            "name": "Data.gov",
-            "source_type": "DATASETS_AND_PUBLIC_APIS",
-            "homepage_url": "https://data.gov/",
-            "collection_method": "API",
+            "name": "Lobsters",
+            "source_type": "COMMUNITY_PAIN_DISCUSSIONS",
+            "homepage_url": "https://lobste.rs/",
+            "collection_method": None,
+            "is_active": False,
         },
         {
-            "name": "Kaggle Datasets",
-            "source_type": "DATASETS_AND_PUBLIC_APIS",
-            "homepage_url": "https://www.kaggle.com/datasets",
-            "collection_method": "API",
+            "name": "NYC 311 Service Requests",
+            "source_type": "CIVIC_PUBLIC_PROBLEMS",
+            "homepage_url": "https://data.cityofnewyork.us/Social-Services/311-Service-Requests-from-2010-to-Present/erm2-nwe9",
+            "collection_method": None,
+            "is_active": False,
+        },
+        {
+            "name": "Open Government Partnership",
+            "source_type": "CIVIC_PUBLIC_PROBLEMS",
+            "homepage_url": "https://www.opengovpartnership.org/the-open-gov-challenge/",
+            "collection_method": None,
+            "is_active": False,
+        },
+        {
+            "name": "NASA Space Apps Challenge",
+            "source_type": "CHALLENGE_STATEMENTS",
+            "homepage_url": "https://www.spaceappschallenge.org/",
+            "collection_method": None,
+            "is_active": False,
+        },
+        {
+            "name": "DrivenData Competitions",
+            "source_type": "CHALLENGE_STATEMENTS",
+            "homepage_url": "https://www.drivendata.org/competitions/",
+            "collection_method": None,
+            "is_active": False,
         },
     ]
 
