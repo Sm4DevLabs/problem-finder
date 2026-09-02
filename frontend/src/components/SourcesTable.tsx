@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Source } from "../types/source";
 import {
   formatSourceType,
@@ -13,8 +14,10 @@ interface SourcesTableProps {
 }
 
 export default function SourcesTable({ sources, onSourceUpdated, onAssessAll }: SourcesTableProps) {
+  const navigate = useNavigate();
   const [assessingId, setAssessingId] = useState<string | null>(null);
   const [assessingAll, setAssessingAll] = useState(false);
+  const [fetchingId, setFetchingId] = useState<string | null>(null);
 
   const handleAssess = async (sourceId: string) => {
     try {
@@ -49,6 +52,39 @@ export default function SourcesTable({ sources, onSourceUpdated, onAssessAll }: 
     }
   };
 
+  const handleFetch = async (sourceId: string, sourceName: string) => {
+    try {
+      setFetchingId(sourceId);
+      const response = await fetch(`http://localhost:8000/api/source-items/${sourceId}/fetch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fetch failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      alert(
+        `✅ Fetch complete for ${sourceName}!\n\n` +
+        `Items fetched: ${result.items_fetched}\n` +
+        `New: ${result.items_new}\n` +
+        `Updated: ${result.items_updated}\n` +
+        `Duration: ${result.duration_seconds}s`
+      );
+
+      // Navigate to problems page
+      navigate("/problems");
+    } catch (error) {
+      console.error("Fetch error:", error);
+      alert(`Failed to fetch from ${sourceName}: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setFetchingId(null);
+    }
+  };
+
   const pendingCount = sources.filter(s => s.assessment_status === "PENDING").length;
 
   return (
@@ -58,13 +94,21 @@ export default function SourcesTable({ sources, onSourceUpdated, onAssessAll }: 
           <h2>Sources</h2>
           <span className="source-count">{sources.length} total</span>
         </div>
-        <button
-          onClick={handleAssessAll}
-          disabled={assessingAll || pendingCount === 0}
-          className="assess-all-button"
-        >
-          {assessingAll ? "⏳ Assessing All..." : `🤖 Assess All (${pendingCount} pending)`}
-        </button>
+        <div className="header-actions">
+          <button
+            onClick={() => navigate("/problems")}
+            className="view-problems-button"
+          >
+            🎯 View Problems
+          </button>
+          <button
+            onClick={handleAssessAll}
+            disabled={assessingAll || pendingCount === 0}
+            className="assess-all-button"
+          >
+            {assessingAll ? "⏳ Assessing All..." : `🤖 Assess All (${pendingCount} pending)`}
+          </button>
+        </div>
       </div>
 
       <table className="sources-table">
@@ -104,14 +148,26 @@ export default function SourcesTable({ sources, onSourceUpdated, onAssessAll }: 
                 )}
               </td>
               <td>
-                <button
-                  onClick={() => handleAssess(source.id)}
-                  disabled={assessingId === source.id}
-                  className="assess-button"
-                  title={source.assessment_status === "ASSESSED" ? "Re-assess this source" : "Assess this source"}
-                >
-                  {assessingId === source.id ? "⏳" : "🤖 Assess"}
-                </button>
+                <div className="action-buttons">
+                  <button
+                    onClick={() => handleAssess(source.id)}
+                    disabled={assessingId === source.id}
+                    className="assess-button"
+                    title={source.assessment_status === "ASSESSED" ? "Re-assess this source" : "Assess this source"}
+                  >
+                    {assessingId === source.id ? "⏳" : "🤖 Assess"}
+                  </button>
+                  {source.is_active && source.collection_method && (
+                    <button
+                      onClick={() => handleFetch(source.id, source.name)}
+                      disabled={fetchingId === source.id}
+                      className="fetch-button"
+                      title="Fetch problems from this source"
+                    >
+                      {fetchingId === source.id ? "⏳" : "🔄 Fetch"}
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

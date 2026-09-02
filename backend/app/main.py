@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.api.ai_controller import router as ai_router
 from app.api.source_controller import router as source_router
+from app.api.source_item_controller import router as source_item_router
 
 origins = [
     "http://localhost:5173",  # React development server
@@ -19,8 +20,9 @@ app.add_middleware(
 )
 
 
-app.include_router(source_router, prefix="/api")
-app.include_router(ai_router, prefix="/api")
+app.include_router(source_router)
+app.include_router(ai_router)
+app.include_router(source_item_router)
 
 
 @app.get("/health")
