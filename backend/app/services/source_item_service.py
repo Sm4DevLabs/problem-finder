@@ -105,8 +105,19 @@ async def fetch_items_for_source(session: AsyncSession, source_id: UUID) -> Fetc
 async def _fetch_from_connector(source_name: str) -> list[dict]:
     """Route to appropriate connector based on source name."""
     if source_name == "ProblemHunt":
-        return await problemhunt_connector.fetch_problems(limit=20)
+        return await problemhunt_connector.fetch_problems(limit=50)
     elif source_name == "Razorpay Fix My Itch":
+        # Try website scraper first (gets 10,000+ problems)
+        try:
+            from app.connectors import razorpay_website_connector
+            print("Using Razorpay website connector for 10,000+ problems...")
+            problems = await razorpay_website_connector.fetch_problems(limit=200)
+            if problems:
+                return problems
+        except Exception as e:
+            print(f"Website connector failed: {e}, falling back to GitHub connector")
+
+        # Fallback to GitHub connector
         return await razorpay_connector.fetch_problems(limit=20)
     else:
         raise Exception(f"No connector implemented for source: {source_name}")

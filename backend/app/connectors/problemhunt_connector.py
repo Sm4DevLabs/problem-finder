@@ -34,46 +34,59 @@ async def fetch_problems(limit: int = 100) -> list[dict]:
             # Wait for page to fully load
             await page.wait_for_load_state('networkidle', timeout=20000)
 
-            # Wait a bit more for dynamic content
-            await page.wait_for_timeout(2000)
+            # Scroll to load more content
+            for _ in range(3):
+                await page.evaluate('window.scrollBy(0, window.innerHeight)')
+                await page.wait_for_timeout(500)
 
             # Get full page text
             full_text = await page.inner_text('body')
 
             # Parse problems from text
-            # ProblemHunt format: Country + Problem description + Date
-            # Look for patterns with country indicators
-            lines = full_text.split('\n')
+            # ProblemHunt format: USA\nUSA\n<problem text>\nNEW or <date>
+            lines = [l.strip() for l in full_text.split('\n') if l.strip()]
 
-            current_problem = None
-            for i, line in enumerate(lines):
-                line = line.strip()
-                if not line:
-                    continue
+            # Known countries/regions that appear on ProblemHunt
+            common_countries = {
+                'USA', 'UK', 'India', 'Russia', 'France', 'Germany', 'Canada',
+                'Australia', 'Brazil', 'Argentina', 'Colombia', 'Vietnam', 'Serbia',
+                'Georgia', 'Estonia', 'Hungary', 'Greece', 'Morocco', 'Nigeria',
+                'Andorra', 'Lebanon', 'Algeria', 'Benin', 'Netherlands'
+            }
 
-                # Check if this looks like a country/location (often repeated for flag)
-                # Countries appear twice (flag + text), followed by problem description
-                if i + 2 < len(lines):
-                    next_line = lines[i + 1].strip()
-                    next_next = lines[i + 2].strip()
+            i = 0
+            while i < len(lines) - 1 and len(problems) < limit:
+                line = lines[i]
 
-                    # If current line equals next line (country repetition) and next_next has content
-                    if line == next_line and len(next_next) > 20 and '$' not in line:
-                        # This is likely a country marker, next_next is the problem
-                        country = line
-                        problem_text = next_next
+                # Check if this is a country
+                if line in common_countries:
+                    country = line
 
-                        # Look for pricing in problem text or following lines
-                        pricing = _extract_pricing(problem_text)
-                        if not pricing and i + 3 < len(lines):
-                            pricing = _extract_pricing(lines[i + 3])
+                    # Next line (i+1) should be the problem
+                    if i + 1 < len(lines):
+                        problem_text = lines[i + 1]
 
-                        # Check for date/badge
-                        date_text = None
-                        if i + 3 < len(lines) and ('NEW' in lines[i + 3] or re.match(r'[A-Z][a-z]+ \d+', lines[i + 3])):
-                            date_text = lines[i + 3]
+                        # Validate it's a real problem (not a menu item or tag)
+                        if len(problem_text) > 40 and \
+                           problem_text not in ['Share your problem', 'Join our Telegram community', 'EN'] and \
+                           not problem_text.startswith('All') and \
+                           not problem_text.startswith('Browse') and \
+                           not problem_text.startswith('This website'):
 
-                        if len(problem_text) > 30:  # Meaningful problem
+                            # Look for date/badge (i+2)
+                            date_text = None
+                            if i + 2 < len(lines):
+                                potential_date = lines[i + 2]
+                                if 'NEW' in potential_date or \
+                                   re.match(r'[A-Za-z]+ \d+', potential_date) or \
+                                   'Validated' in potential_date:
+                                    date_text = potential_date
+
+                            # Extract pricing from problem or nearby text
+                            pricing = _extract_pricing(problem_text)
+                            if not pricing and i + 2 < len(lines):
+                                pricing = _extract_pricing(lines[i + 2])
+
                             problems.append({
                                 "external_id": f"problemhunt-{hash(problem_text)}",
                                 "title": problem_text[:200],
@@ -90,8 +103,10 @@ async def fetch_problems(limit: int = 100) -> list[dict]:
                                 },
                             })
 
-                            if len(problems) >= limit:
-                                break
+                    i += 2  # Skip country and problem
+                    continue
+
+                i += 1
 
         await crawler.run(['https://problemhunt.pro/'])
 
