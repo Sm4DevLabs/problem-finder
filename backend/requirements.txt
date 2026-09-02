@@ -50,3 +50,4 @@ uvloop==0.22.1
 watchfiles==1.2.0
 websockets==17.1
 beautifulsoup4==4.15.0
+crawlee[playwright]==1.10.0

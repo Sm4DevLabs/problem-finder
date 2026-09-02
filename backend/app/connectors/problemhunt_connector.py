@@ -1,17 +1,17 @@
 """
-ProblemHunt connector - Web scraping based collector.
+ProblemHunt connector - Crawlee+Playwright based collector.
 
-Fetches problems from ProblemHunt.pro using their public pages.
+Fetches problems from ProblemHunt.pro which uses dynamic Tilda/JavaScript content.
 """
 
-import httpx
-from bs4 import BeautifulSoup
+from crawlee.crawlers import PlaywrightCrawler
 from datetime import datetime, timezone
+import re
 
 
-async def fetch_problems(limit: int = 20) -> list[dict]:
+async def fetch_problems(limit: int = 100) -> list[dict]:
     """
-    Fetch problems from ProblemHunt.
+    Fetch problems from ProblemHunt using Crawlee+Playwright.
 
     Args:
         limit: Maximum number of problems to fetch
@@ -21,68 +21,81 @@ async def fetch_problems(limit: int = 20) -> list[dict]:
     """
     problems = []
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    }
-
     try:
-        async with httpx.AsyncClient(
-            timeout=15.0, follow_redirects=True, headers=headers, verify=False
-        ) as client:
-            # Fetch the main problems page
-            response = await client.get("https://problemhunt.pro/problems")
+        crawler = PlaywrightCrawler(
+            headless=True,
+            max_requests_per_crawl=1,
+        )
 
-            if response.status_code != 200:
-                raise Exception(f"Failed to fetch ProblemHunt: HTTP {response.status_code}")
+        @crawler.router.default_handler
+        async def handler(context):
+            page = context.page
 
-            soup = BeautifulSoup(response.text, "html.parser")
+            # Wait for page to fully load
+            await page.wait_for_load_state('networkidle', timeout=20000)
 
-            # Find problem cards/items (adjust selectors based on actual HTML structure)
-            # This is a placeholder - actual selectors need to be determined by inspecting the site
-            problem_elements = soup.find_all("div", class_="problem-card", limit=limit)
+            # Wait a bit more for dynamic content
+            await page.wait_for_timeout(2000)
 
-            if not problem_elements:
-                # Try alternative selectors
-                problem_elements = soup.find_all("article", limit=limit)
+            # Get full page text
+            full_text = await page.inner_text('body')
 
-            for idx, elem in enumerate(problem_elements[:limit]):
-                try:
-                    # Extract problem details (adjust selectors based on actual structure)
-                    title_elem = elem.find(["h2", "h3", "h4", "a"])
-                    title = title_elem.get_text(strip=True) if title_elem else f"Problem {idx + 1}"
+            # Parse problems from text
+            # ProblemHunt format: Country + Problem description + Date
+            # Look for patterns with country indicators
+            lines = full_text.split('\n')
 
-                    desc_elem = elem.find("p") or elem.find("div", class_="description")
-                    description = desc_elem.get_text(strip=True) if desc_elem else ""
-
-                    # Try to find URL
-                    link_elem = elem.find("a", href=True)
-                    url = f"https://problemhunt.pro{link_elem['href']}" if link_elem else None
-
-                    # Try to extract metadata fields
-                    frequency = _extract_field(elem, ["frequency", "occurs", "how-often"])
-                    solutions = _extract_field(elem, ["solutions", "attempts", "existing"])
-                    pricing = _extract_field(elem, ["pricing", "willing-to-pay", "price"])
-
-                    problems.append(
-                        {
-                            "external_id": f"problemhunt-{idx}-{hash(title)}",
-                            "title": title,
-                            "description": description,
-                            "url": url or "https://problemhunt.pro/problems",
-                            "problem_frequency": frequency,
-                            "existing_solutions": solutions,
-                            "pricing_estimate": pricing,
-                            "raw_data": {
-                                "source": "problemhunt",
-                                "scraped_at": datetime.now(timezone.utc).isoformat(),
-                                "html_snippet": str(elem)[:500],
-                            },
-                        }
-                    )
-                except Exception as e:
-                    print(f"Error parsing problem element: {e}")
+            current_problem = None
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if not line:
                     continue
+
+                # Check if this looks like a country/location (often repeated for flag)
+                # Countries appear twice (flag + text), followed by problem description
+                if i + 2 < len(lines):
+                    next_line = lines[i + 1].strip()
+                    next_next = lines[i + 2].strip()
+
+                    # If current line equals next line (country repetition) and next_next has content
+                    if line == next_line and len(next_next) > 20 and '$' not in line:
+                        # This is likely a country marker, next_next is the problem
+                        country = line
+                        problem_text = next_next
+
+                        # Look for pricing in problem text or following lines
+                        pricing = _extract_pricing(problem_text)
+                        if not pricing and i + 3 < len(lines):
+                            pricing = _extract_pricing(lines[i + 3])
+
+                        # Check for date/badge
+                        date_text = None
+                        if i + 3 < len(lines) and ('NEW' in lines[i + 3] or re.match(r'[A-Z][a-z]+ \d+', lines[i + 3])):
+                            date_text = lines[i + 3]
+
+                        if len(problem_text) > 30:  # Meaningful problem
+                            problems.append({
+                                "external_id": f"problemhunt-{hash(problem_text)}",
+                                "title": problem_text[:200],
+                                "description": problem_text,
+                                "url": "https://problemhunt.pro/",
+                                "problem_frequency": None,
+                                "existing_solutions": None,
+                                "pricing_estimate": pricing,
+                                "raw_data": {
+                                    "source": "problemhunt",
+                                    "country": country,
+                                    "date": date_text,
+                                    "scraped_at": datetime.now(timezone.utc).isoformat(),
+                                },
+                            })
+
+                            if len(problems) >= limit:
+                                break
+
+        await crawler.run(['https://problemhunt.pro/'])
+
+        print(f"ProblemHunt: Extracted {len(problems)} problems")
 
     except Exception as e:
         raise Exception(f"ProblemHunt fetch failed: {str(e)}")
@@ -90,28 +103,22 @@ async def fetch_problems(limit: int = 20) -> list[dict]:
     return problems
 
 
-def _extract_field(element, keywords: list[str]) -> str | None:
-    """
-    Try to extract a field from an element using various keywords.
+def _extract_pricing(text: str) -> str | None:
+    """Extract pricing information from text."""
+    if not text:
+        return None
 
-    Args:
-        element: BeautifulSoup element
-        keywords: List of possible class names or text patterns
+    # Look for patterns like "$10/month", "$100", "€50", "willing to pay $X"
+    pricing_patterns = [
+        r'\$\d+(?:[,.]?\d+)?(?:[/\-]\s*(?:month|year|mo|yr|deal))?',
+        r'€\d+(?:[,.]?\d+)?(?:[/\-]\s*(?:month|year|mo|yr))?',
+        r'₹\d+(?:[,.]?\d+)?(?:[/\-]\s*(?:month|year|mo|yr))?',
+        r'£\d+(?:[,.]?\d+)?(?:[/\-]\s*(?:month|year|mo|yr))?',
+    ]
 
-    Returns:
-        Extracted text or None
-    """
-    for keyword in keywords:
-        # Try class-based search
-        found = element.find(class_=lambda x: x and keyword in x.lower())
-        if found:
-            return found.get_text(strip=True)
-
-        # Try text-based search
-        found = element.find(string=lambda x: x and keyword in x.lower())
-        if found:
-            parent = found.find_parent()
-            if parent:
-                return parent.get_text(strip=True)
+    for pattern in pricing_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(0)
 
     return None
