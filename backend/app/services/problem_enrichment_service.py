@@ -63,8 +63,41 @@ def _canonical_tag(value: str) -> str | None:
     return None
 
 
+# Strict, authoritative solvability check. A capable model follows this rule well;
+# it prevents "a reporting app could help" from marking a physically-rooted problem
+# as software-solvable.
+_CLASSIFY_PROMPT = """Classify how software relates to this problem.
+
+CRITICAL RULE: A reporting app, marketplace, directory, or coordination tool that
+merely connects people to a PHYSICAL service (repair, plumbing, cleaning, delivery,
+construction, cooking, manufacturing, physically handling goods) does NOT count as
+solving the problem. If the CORE fix is a physical act, answer "physical" even
+though an app could help coordinate it.
+Answer "software" only when software itself delivers the core value (e.g. a CRM, a
+fintech flow, a website builder, an analytics/AI tool, a booking system where the
+software IS the product).
+
+Problem: {title}
+Details: {description}
+JSON only: {{"kind": "software" or "physical", "why": "few words"}}"""
+
+
 def _has_text(value) -> bool:
     return isinstance(value, str) and value.strip() != ""
+
+
+async def classify_solvability(title: str, description: str) -> tuple[str, str]:
+    """Return ("software"|"physical", why). Defaults to "software" on failure so
+    problems are never wrongly marked non-software."""
+    prompt = _CLASSIFY_PROMPT.format(title=title or "", description=description or title or "")
+    try:
+        data = await llm_service.chat_json(prompt, temperature=0)
+    except Exception as e:  # noqa: BLE001
+        print(f"[enrichment] solvability check failed: {e}")
+        return "software", ""
+    kind = str(data.get("kind", "software")).strip().lower()
+    why = data.get("why") if _has_text(data.get("why")) else ""
+    return ("physical" if kind.startswith("phys") else "software"), why
 
 
 def _normalize_tags(raw) -> list[str]:
@@ -158,6 +191,11 @@ async def enrich_problem(problem: dict) -> dict:
     On any AI failure, the problem is returned with whatever fields were already
     present so the fetch pipeline never breaks on a single item.
     """
+    # Authoritative, strict solvability judgment (short, fast call).
+    kind, why = await classify_solvability(
+        problem.get("title") or "", problem.get("description") or ""
+    )
+
     enriched: dict = {}
     try:
         # Uses hosted NIM when configured, else local Ollama (see llm_service).
@@ -181,6 +219,12 @@ async def enrich_problem(problem: dict) -> dict:
         problem["solution_tags"] = tags
     if _has_text(enriched.get("solution_approach")):
         problem["solution_approach"] = enriched["solution_approach"].strip()
+
+    # The strict classifier is authoritative for the software/physical split.
+    if kind == "physical":
+        problem["solution_tags"] = ["Not Software-Solvable"]
+        if why:
+            problem["solution_approach"] = f"Not solvable by software alone: {why}."
 
     not_software = problem.get("solution_tags") == ["Not Software-Solvable"]
 
