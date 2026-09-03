@@ -69,8 +69,57 @@ def _canonical_tag(value: str) -> str | None:
     return None
 
 
+# Focused, example-driven binary classifier. Small local models judge this single
+# question far better in isolation than as one field inside the large enrichment
+# prompt (which biases toward always finding a software angle).
+_SOLVABILITY_PROMPT = """You classify whether the CORE of a problem can be solved by software alone.
+
+Rules:
+- "software" = the core can be fully solved by an app, website, extension, API, or bot.
+- "physical" = the core need is physical handling, manufacturing, cooking, repair,
+  moving physical goods, or in-person manual labor. A reporting/tracking app does
+  NOT count as solving it.
+
+Examples:
+- "Potholes damage cars, no one repairs them" -> physical (needs road crews/asphalt)
+- "Bruised fruit from rushed warehouse handling" -> physical (needs better physical handling)
+- "Restaurant food tastes inconsistent" -> physical (needs kitchen process/cooking)
+- "Simple CRM for a 3-person team" -> software
+- "Freelancers ghost after partial payment" -> software (escrow/accountability platform)
+
+Problem: {title}
+Details: {description}
+
+Answer ONLY JSON like {{"kind": "software", "reason": "<one short sentence>"}}
+where kind is either "software" or "physical"."""
+
+
 def _has_text(value) -> bool:
     return isinstance(value, str) and value.strip() != ""
+
+
+async def classify_solvability(title: str, description: str) -> tuple[str, str]:
+    """Return ("software"|"physical", reason). Defaults to "software" on failure
+    so we never over-flag problems as non-software."""
+    prompt = _SOLVABILITY_PROMPT.format(title=title or "", description=description or title or "")
+    try:
+        response = await asyncio.to_thread(
+            ollama.chat,
+            model=settings.OLLAMA_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            format="json",
+            options={"temperature": 0},  # deterministic, consistent verdicts
+        )
+        data = json.loads(response["message"]["content"])
+    except (ResponseError, json.JSONDecodeError, KeyError, Exception):  # noqa: BLE001
+        return "software", ""
+    kind = str(data.get("kind", "software")).strip().lower()
+    raw_reason = data.get("reason")
+    # Guard against the model echoing the schema placeholder text.
+    reason = raw_reason.strip() if _has_text(raw_reason) else ""
+    if reason.lower() in {"short", "reason", "<one short sentence>", "one short sentence"}:
+        reason = ""
+    return ("physical" if kind.startswith("phys") else "software"), reason
 
 
 def _normalize_tags(raw) -> list[str]:
@@ -117,16 +166,21 @@ Category / industry: {category or "unknown"}
 Fields already collected from the source (keep them accurate, do not contradict):
 {known_block}
 
-First decide which kinds of software (if any) could solve this problem. Not every
-problem is software-solvable — some need physical goods, offline services, or hardware.
+First, judge honestly whether software can solve the CORE of this problem, or can
+only peripherally assist. Many problems are physically rooted — the core need is
+physical handling, manufacturing, in-person/manual service, moving physical goods,
+or hardware. In those cases software (an app to "track" or "report" it) does NOT
+solve the core problem: return ["Not Software-Solvable"]. Do NOT force a software
+angle just because a reporting/tracking app is imaginable.
 
 Produce ALL of the following:
 - "solution_tags": an array choosing ONLY from this exact list: [{tag_list}].
-  Pick the 1-3 BEST-FIT mediums for this specific problem — do NOT list every
-  option. If it genuinely cannot be solved with software (needs physical goods,
-  in-person services, or hardware), return exactly ["Not Software-Solvable"].
+  If software genuinely solves the CORE problem, pick the 1-3 BEST-FIT mediums
+  (do NOT list every option). If software can only assist a physically-rooted
+  problem, return exactly ["Not Software-Solvable"].
 - "solution_approach": 1-2 sentences explaining concretely HOW such a product would
-  solve the problem (or, if not software-solvable, why not and what would be needed).
+  solve the problem — or, for ["Not Software-Solvable"], why software cannot solve
+  the core problem and what is actually required.
 - "problem_frequency": one short sentence on how often this problem occurs.
 - "existing_solutions": current tools/apps that try to solve this and their gaps.
 - "pricing_estimate": realistic price a solution could charge (or users would pay).
@@ -163,6 +217,13 @@ async def enrich_problem(problem: dict) -> dict:
     On any AI failure, the problem is returned with whatever fields were already
     present so the fetch pipeline never breaks on a single item.
     """
+    # Authoritative solvability judgment (focused prompt) — decides the
+    # Not-Software-Solvable classification more reliably than the big prompt.
+    kind, reason = await classify_solvability(
+        problem.get("title") or "", problem.get("description") or ""
+    )
+
+    enriched: dict = {}
     try:
         # ollama.chat is a blocking HTTP call; run it in a worker thread so a slow
         # enrichment never blocks the async event loop (keeps the API responsive).
@@ -175,10 +236,8 @@ async def enrich_problem(problem: dict) -> dict:
         enriched = json.loads(response["message"]["content"])
     except (ResponseError, json.JSONDecodeError, KeyError) as e:
         print(f"[enrichment] AI enrichment failed for '{problem.get('title', '')[:60]}': {e}")
-        return problem
     except Exception as e:  # noqa: BLE001 - never let one bad item abort a fetch
         print(f"[enrichment] Unexpected enrichment error: {e}")
-        return problem
 
     # Analytical fields: keep scraped values, fall back to AI for gaps.
     if not _has_text(problem.get("problem_frequency")) and _has_text(enriched.get("problem_frequency")):
@@ -195,11 +254,23 @@ async def enrich_problem(problem: dict) -> dict:
     if _has_text(enriched.get("solution_approach")):
         problem["solution_approach"] = enriched["solution_approach"].strip()
 
+    # The focused classifier is authoritative: a physically-rooted problem is
+    # marked Not Software-Solvable regardless of what the big prompt guessed. Its
+    # (software-oriented) approach text no longer applies, so replace it with the
+    # classifier's reason or clear it.
+    if kind == "physical":
+        problem["solution_tags"] = ["Not Software-Solvable"]
+        problem["solution_approach"] = reason or None
+
     not_software = problem.get("solution_tags") == ["Not Software-Solvable"]
 
     # Tech stack recommendations: always AI-generated, except when the problem is
     # not software-solvable (a stack would be meaningless).
-    if not not_software:
+    if not_software:
+        problem["tech_stack_options"] = None
+        problem["recommended_tech_stack"] = None
+        problem["tech_stack_justification"] = None
+    else:
         options = enriched.get("tech_stack_options")
         if isinstance(options, list) and options:
             problem["tech_stack_options"] = options
