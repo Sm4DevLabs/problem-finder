@@ -10,11 +10,23 @@ export interface TechStack {
   technologies: string[];
 }
 
+export interface ProblemRawData {
+  source?: string;
+  strategy?: string;
+  category?: string;
+  industry?: string;
+  score?: number;
+  host?: string;
+  scraped_at?: string;
+  [key: string]: unknown;
+}
+
 export interface Problem {
   id: string;
   source_id: string;
   external_id: string;
   title: string;
+  raw_data: ProblemRawData | null;
   description: string | null;
   url: string | null;
   problem_frequency: string | null;
@@ -27,6 +39,16 @@ export interface Problem {
   created_at: string;
   updated_at: string;
 }
+
+export const SOURCE_LABELS: Record<string, string> = {
+  problemhunt: "PROBLEMHUNT",
+  "razorpay-fix-my-itch": "RAZORPAY",
+};
+
+export const sourceLabel = (raw: ProblemRawData | null): string => {
+  if (!raw?.source) return "UNKNOWN";
+  return SOURCE_LABELS[raw.source] ?? raw.source.toUpperCase();
+};
 
 export interface FetchResult {
   source_id: string;

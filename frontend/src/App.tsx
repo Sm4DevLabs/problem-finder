@@ -64,10 +64,10 @@ function App() {
 
       // Show summary
       alert(
-        `Assessment complete!\n\n` +
-        `✅ Assessed: ${result.assessed_count}\n` +
-        `⏭️ Skipped: ${result.skipped_count}\n` +
-        `❌ Failed: ${result.failed_count}`
+        `ASSESSMENT COMPLETE\n\n` +
+        `Assessed: ${result.assessed_count}\n` +
+        `Skipped: ${result.skipped_count}\n` +
+        `Failed: ${result.failed_count}`
       );
     } catch (error) {
       console.error("Batch assessment error:", error);
@@ -78,20 +78,23 @@ function App() {
   return (
     <div className="App">
       <header className="app-header">
-        <h1>ProblemFinder</h1>
-        <p className="tagline">Discover real-world problems worth building for.</p>
+        <div>
+          <div className="eyebrow">// PROBLEM DISCOVERY ENGINE</div>
+          <h1>ProblemFinder</h1>
+        </div>
+        <p className="tagline">Real-world problems worth building for.</p>
       </header>
 
       <main className="app-main">
         {loading && (
           <div className="loading-state">
-            <p>Loading sources...</p>
+            <p>Loading sources&hellip;</p>
           </div>
         )}
 
         {error && (
           <div className="error-state">
-            <h3>❌ Error</h3>
+            <h3>[ ERROR ]</h3>
             <p>{error}</p>
             <p className="error-help">
               Make sure the FastAPI server is running:

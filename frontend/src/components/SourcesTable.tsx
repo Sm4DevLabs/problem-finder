@@ -68,7 +68,7 @@ export default function SourcesTable({ sources, onSourceUpdated, onAssessAll }: 
 
       const result = await response.json();
       alert(
-        `✅ Fetch complete for ${sourceName}!\n\n` +
+        `FETCH COMPLETE -- ${sourceName}\n\n` +
         `Items fetched: ${result.items_fetched}\n` +
         `New: ${result.items_new}\n` +
         `Updated: ${result.items_updated}\n` +
@@ -99,14 +99,14 @@ export default function SourcesTable({ sources, onSourceUpdated, onAssessAll }: 
             onClick={() => navigate("/problems")}
             className="view-problems-button"
           >
-            🎯 View Problems
+            View Problems
           </button>
           <button
             onClick={handleAssessAll}
             disabled={assessingAll || pendingCount === 0}
             className="assess-all-button"
           >
-            {assessingAll ? "⏳ Assessing All..." : `🤖 Assess All (${pendingCount} pending)`}
+            {assessingAll ? "Assessing All..." : `Assess All (${pendingCount})`}
           </button>
         </div>
       </div>
@@ -141,7 +141,7 @@ export default function SourcesTable({ sources, onSourceUpdated, onAssessAll }: 
                     rel="noopener noreferrer"
                     className="source-link"
                   >
-                    Visit source ↗
+                    Visit source
                   </a>
                 ) : (
                   <span className="no-link">No URL</span>
@@ -155,16 +155,16 @@ export default function SourcesTable({ sources, onSourceUpdated, onAssessAll }: 
                     className="assess-button"
                     title={source.assessment_status === "ASSESSED" ? "Re-assess this source" : "Assess this source"}
                   >
-                    {assessingId === source.id ? "⏳" : "🤖 Assess"}
+                    {assessingId === source.id ? "..." : "Assess"}
                   </button>
-                  {source.is_active && source.collection_method && (
+                  {source.collection_method && (
                     <button
                       onClick={() => handleFetch(source.id, source.name)}
                       disabled={fetchingId === source.id}
                       className="fetch-button"
                       title="Fetch problems from this source"
                     >
-                      {fetchingId === source.id ? "⏳" : "🔄 Fetch"}
+                      {fetchingId === source.id ? "..." : "Fetch"}
                     </button>
                   )}
                 </div>

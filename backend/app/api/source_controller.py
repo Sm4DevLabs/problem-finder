@@ -8,7 +8,7 @@ from app.services import source_assessment_service
 
 
 router = APIRouter(
-    prefix="/sources",
+    prefix="/api/sources",
     tags=["sources"],
     responses={404: {"description": "Not found"}},
 )
