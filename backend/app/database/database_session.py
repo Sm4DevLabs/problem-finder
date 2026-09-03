@@ -12,8 +12,15 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str
     CRAWLVIEL_API_URL: str = "https://crawlviel-api.sm4devlabs.dpdns.org"
     # Max problems AI-enriched per fetch (keeps the synchronous fetch responsive;
-    # each enrichment is one Ollama call).
+    # each enrichment is one LLM call).
     FETCH_ENRICH_LIMIT: int = 8
+
+    # Optional hosted LLM (NVIDIA NIM, OpenAI-compatible). When NVIDIA_API_KEY is
+    # set, enrichment uses NIM (far more accurate than the tiny local model);
+    # otherwise it falls back to local Ollama.
+    NVIDIA_API_KEY: str = ""
+    NIM_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
+    NIM_MODEL: str = "meta/llama-3.3-70b-instruct"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -29,6 +29,8 @@ app.include_router(source_item_router)
 async def read_db_health():
     from app.database.database_session import AsyncSessionLocal
 
+    from app.services import llm_service
+
     async with AsyncSessionLocal() as session:
         try:
             await session.execute(text("SELECT 1"))
@@ -37,6 +39,8 @@ async def read_db_health():
                 "service": "Problem Finder",
                 "version": "1.0.0",
                 "database": "Connected",
+                "ai_provider": llm_service.active_provider(),
+                "ai_model": llm_service.active_model(),
             }
         except Exception as e:
             return {
