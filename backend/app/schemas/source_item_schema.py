@@ -32,13 +32,12 @@ class SourceItemResponse(SourceItemBase):
     id: UUID
     source_id: UUID
     external_id: str
+    raw_data: dict | None = None
     fetched_at: datetime
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
+    model_config = {"from_attributes": True}
 
 class FetchResult(BaseModel):
     """Result of a fetch operation."""

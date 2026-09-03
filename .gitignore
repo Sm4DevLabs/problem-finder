@@ -53,3 +53,10 @@ htmlcov/
 # Generic build output
 dist/
 build/
+
+.cursor
+.claude
+
+# Documentation (except README)
+*.md
+!README.md
