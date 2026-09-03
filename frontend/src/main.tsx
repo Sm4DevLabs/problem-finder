@@ -11,9 +11,11 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<App />} />
+        <Route path="/" element={<ProblemsListPage />} />
         <Route path="/problems" element={<ProblemsListPage />} />
         <Route path="/problems/:id" element={<ProblemDetailPage />} />
+        {/* Sources management is an admin-only view, intentionally unlinked. */}
+        <Route path="/sources" element={<App />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

@@ -140,6 +140,17 @@ button {
   color: var(--accent);
 }
 
+.badge--solution {
+  background: rgba(13, 13, 13, 0.06);
+  border-color: var(--ink);
+}
+
+.badge--warn {
+  background: var(--accent);
+  color: var(--paper);
+  border-color: var(--accent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

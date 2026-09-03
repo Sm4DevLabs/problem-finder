@@ -32,6 +32,9 @@ export interface Problem {
   problem_frequency: string | null;
   existing_solutions: string | null;
   pricing_estimate: string | null;
+  problem_author: string | null;
+  solution_tags: string[] | null;
+  solution_approach: string | null;
   tech_stack_options: TechStackOption[] | null;
   recommended_tech_stack: TechStack | null;
   tech_stack_justification: string | null;
