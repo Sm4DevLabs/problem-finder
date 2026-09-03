@@ -13,6 +13,9 @@ class SourceItemBase(BaseModel):
     problem_frequency: str | None = None
     existing_solutions: str | None = None
     pricing_estimate: str | None = None
+    problem_author: str | None = None
+    solution_tags: list | None = None  # e.g. ["Web App", "Browser Extension"]
+    solution_approach: str | None = None
     tech_stack_options: list | None = None  # List of TechStackOption dicts
     recommended_tech_stack: dict | None = None
     tech_stack_justification: str | None = None

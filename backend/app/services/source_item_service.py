@@ -8,18 +8,27 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors import problemhunt_connector, razorpay_connector
+from app.database.database_session import settings
 from app.models.source_item_model import SourceItem
 from app.models.source_model import Source
 from app.schemas.source_item_schema import FetchResult
+from app.services import problem_enrichment_service
 
 
-async def fetch_items_for_source(session: AsyncSession, source_id: UUID) -> FetchResult:
+async def fetch_items_for_source(
+    session: AsyncSession, source_id: UUID, limit: int | None = None
+) -> FetchResult:
     """
-    Fetch items for a specific source using its connector.
+    Fetch items for a specific source using its connector, then AI-enrich each
+    problem (fill missing frequency/solutions/pricing and always brainstorm tech
+    stacks) before storing.
 
     Args:
         session: Database session
         source_id: Source UUID
+        limit: Max problems to fetch + enrich this run (defaults to
+            settings.FETCH_ENRICH_LIMIT). Each enrichment is one Ollama call, so
+            this bounds the synchronous request time.
 
     Returns:
         FetchResult with statistics
@@ -28,6 +37,7 @@ async def fetch_items_for_source(session: AsyncSession, source_id: UUID) -> Fetc
         Exception if source not found or fetch fails
     """
     start_time = time.time()
+    effective_limit = limit if limit and limit > 0 else settings.FETCH_ENRICH_LIMIT
 
     # Get source
     result = await session.execute(select(Source).where(Source.id == source_id))
@@ -39,8 +49,13 @@ async def fetch_items_for_source(session: AsyncSession, source_id: UUID) -> Fetc
     if not source.is_active:
         raise Exception(f"Source '{source.name}' is inactive")
 
-    # Route to appropriate connector
-    problems = await _fetch_from_connector(source.name)
+    # Route to appropriate connector (capped to the enrichment budget)
+    problems = await _fetch_from_connector(source.name, effective_limit)
+
+    # AI-enrich each problem: fill any missing analytical fields and always
+    # brainstorm tech-stack options + recommendation.
+    for problem in problems:
+        await problem_enrichment_service.enrich_problem(problem)
 
     # Store items (upsert)
     items_new = 0
@@ -62,6 +77,9 @@ async def fetch_items_for_source(session: AsyncSession, source_id: UUID) -> Fetc
             existing_item.problem_frequency = problem.get("problem_frequency")
             existing_item.existing_solutions = problem.get("existing_solutions")
             existing_item.pricing_estimate = problem.get("pricing_estimate")
+            existing_item.problem_author = problem.get("problem_author")
+            existing_item.solution_tags = problem.get("solution_tags")
+            existing_item.solution_approach = problem.get("solution_approach")
             existing_item.tech_stack_options = problem.get("tech_stack_options")
             existing_item.recommended_tech_stack = problem.get("recommended_tech_stack")
             existing_item.tech_stack_justification = problem.get("tech_stack_justification")
@@ -79,6 +97,9 @@ async def fetch_items_for_source(session: AsyncSession, source_id: UUID) -> Fetc
                 problem_frequency=problem.get("problem_frequency"),
                 existing_solutions=problem.get("existing_solutions"),
                 pricing_estimate=problem.get("pricing_estimate"),
+                problem_author=problem.get("problem_author"),
+                solution_tags=problem.get("solution_tags"),
+                solution_approach=problem.get("solution_approach"),
                 tech_stack_options=problem.get("tech_stack_options"),
                 recommended_tech_stack=problem.get("recommended_tech_stack"),
                 tech_stack_justification=problem.get("tech_stack_justification"),
@@ -102,24 +123,24 @@ async def fetch_items_for_source(session: AsyncSession, source_id: UUID) -> Fetc
     )
 
 
-async def _fetch_from_connector(source_name: str) -> list[dict]:
+async def _fetch_from_connector(source_name: str, limit: int) -> list[dict]:
     """Route to appropriate connector based on source name."""
     if source_name == "ProblemHunt":
         # Crawlviel Tilda Feed API — all published CMS records
-        return await problemhunt_connector.fetch_problems()
+        return await problemhunt_connector.fetch_problems(limit=limit)
     elif source_name == "Razorpay Fix My Itch":
         # Crawlviel Framer CMS — published curated set (not marketing 10k+)
         try:
             from app.connectors import razorpay_website_connector
 
             print("Using Crawlviel Framer connector for Fix My Itch...")
-            problems = await razorpay_website_connector.fetch_problems()
+            problems = await razorpay_website_connector.fetch_problems(limit=limit)
             if problems:
                 return problems
         except Exception as e:
             print(f"Crawlviel Razorpay connector failed: {e}, falling back to GitHub connector")
 
-        return await razorpay_connector.fetch_problems(limit=20)
+        return await razorpay_connector.fetch_problems(limit=limit)
     else:
         raise Exception(f"No connector implemented for source: {source_name}")
 
@@ -135,10 +156,15 @@ async def get_items_for_source(session: AsyncSession, source_id: UUID, limit: in
     return result.scalars().all()
 
 
-async def get_all_items(session: AsyncSession, limit: int = 100) -> list[SourceItem]:
-    """Get all items across all sources."""
+async def get_all_items(
+    session: AsyncSession, limit: int = 100, offset: int = 0
+) -> list[SourceItem]:
+    """Get a page of items across all sources (newest first, stable ordering)."""
     result = await session.execute(
-        select(SourceItem).order_by(SourceItem.fetched_at.desc()).limit(limit)
+        select(SourceItem)
+        .order_by(SourceItem.fetched_at.desc(), SourceItem.id.desc())
+        .limit(limit)
+        .offset(offset)
     )
     return result.scalars().all()
 

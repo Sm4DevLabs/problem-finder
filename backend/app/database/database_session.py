@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str
     OLLAMA_MODEL: str
     CRAWLVIEL_API_URL: str = "https://crawlviel-api.sm4devlabs.dpdns.org"
+    # Max problems AI-enriched per fetch (keeps the synchronous fetch responsive;
+    # each enrichment is one Ollama call).
+    FETCH_ENRICH_LIMIT: int = 8
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

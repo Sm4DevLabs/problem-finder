@@ -29,10 +29,17 @@ class SourceItem(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    # Enriched fields (AI-populated for sources that don't have them natively)
+    # Enriched fields (scraped when available, otherwise AI-generated)
     problem_frequency: Mapped[str | None] = mapped_column(Text, nullable=True)
     existing_solutions: Mapped[str | None] = mapped_column(Text, nullable=True)
     pricing_estimate: Mapped[str | None] = mapped_column(Text, nullable=True)
+    problem_author: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Solution classification (AI-generated): which software mediums can solve this
+    # problem (e.g. Web App, Mobile App, Browser Extension) or "Not Software-Solvable",
+    # plus a short description of how it could be solved.
+    solution_tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    solution_approach: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Tech stack recommendations (AI-generated)
     tech_stack_options: Mapped[dict | None] = mapped_column(JSON, nullable=True)

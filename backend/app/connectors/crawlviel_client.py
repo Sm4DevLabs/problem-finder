@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
@@ -116,19 +115,19 @@ def map_cms_item(
     category = item.get("category") or item.get("industry")
     score = item.get("score")
 
-    frequency = None
-    if score is not None:
-        frequency = f"CMS score: {score}"
-
+    # Analytical fields (frequency / solutions / pricing) are left empty here and
+    # filled downstream by the enrichment service (AI) when the source does not
+    # provide them. The raw CMS score is kept in raw_data, not shown as frequency.
     # Prefer per-item URL for IDs; Framer CMS often lacks detail URLs — fall back to title.
     return {
         "external_id": _stable_id(id_prefix, item_url or title),
         "title": title[:500],
         "description": text,
         "url": url,
-        "problem_frequency": frequency,
+        "problem_frequency": None,
         "existing_solutions": None,
-        "pricing_estimate": _extract_pricing(text),
+        "pricing_estimate": None,
+        "problem_author": None,
         "raw_data": {
             "source": source_key,
             "strategy": "crawlviel",
@@ -146,19 +145,3 @@ def map_cms_item(
     }
 
 
-_PRICING_PATTERNS = [
-    r"\$\d+(?:[,.]?\d+)?(?:[/\-]\s*(?:month|year|mo|yr|deal))?",
-    r"€\d+(?:[,.]?\d+)?(?:[/\-]\s*(?:month|year|mo|yr))?",
-    r"₹\d+(?:[,.]?\d+)?(?:[/\-]\s*(?:month|year|mo|yr))?",
-    r"£\d+(?:[,.]?\d+)?(?:[/\-]\s*(?:month|year|mo|yr))?",
-]
-
-
-def _extract_pricing(text: str) -> str | None:
-    if not text:
-        return None
-    for pattern in _PRICING_PATTERNS:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(0)
-    return None
