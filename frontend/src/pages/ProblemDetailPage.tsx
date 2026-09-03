@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
@@ -15,13 +15,7 @@ export default function ProblemDetailPage() {
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (id) {
-      fetchProblem(id);
-    }
-  }, [id]);
-
-  const fetchProblem = async (problemId: string) => {
+  const fetchProblem = useCallback(async (problemId: string) => {
     try {
       const response = await fetch(`http://localhost:8000/api/source-items/item/${problemId}`);
       if (!response.ok) throw new Error("Failed to fetch problem");
@@ -33,7 +27,14 @@ export default function ProblemDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- idiomatic fetch-on-mount
+      fetchProblem(id);
+    }
+  }, [id, fetchProblem]);
 
   useGSAP(
     () => {
@@ -74,17 +75,26 @@ export default function ProblemDetailPage() {
         <button onClick={() => navigate("/problems")} className="brut-btn">
           &lt; Back to Problems
         </button>
-        {problem.url && (
-          <a href={problem.url} target="_blank" rel="noopener noreferrer" className="brut-btn brut-btn--accent">
-            View Source
-          </a>
-        )}
       </div>
 
       <div className="record-meta-strip">
-        <span className="badge badge--fill">{sourceLabel(problem.raw_data)}</span>
+        {problem.url ? (
+          <a
+            href={problem.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="source-link-badge"
+            title="Visit source"
+          >
+            {sourceLabel(problem.raw_data)}
+            <span className="source-arrow" aria-hidden="true">&#8599;</span>
+          </a>
+        ) : (
+          <span className="badge badge--fill">{sourceLabel(problem.raw_data)}</span>
+        )}
         {category && <span className="badge">{category}</span>}
         {typeof score === "number" && <span className="badge badge--accent">SCORE {score}</span>}
+        {problem.problem_author && <span className="mono-tag">AUTHOR / {problem.problem_author}</span>}
         {problem.raw_data?.host && <span className="mono-tag">HOST / {problem.raw_data.host}</span>}
       </div>
 
@@ -92,9 +102,33 @@ export default function ProblemDetailPage() {
         <section className="section overview-section">
           <h1 className="problem-title">{problem.title}</h1>
           {problem.description && <p className="problem-description">{problem.description}</p>}
+          {problem.solution_tags && problem.solution_tags.length > 0 && (
+            <div className="solution-tags">
+              {problem.solution_tags.map((tag) => (
+                <span
+                  key={tag}
+                  className={`badge badge--solution ${
+                    tag === "Not Software-Solvable" ? "badge--warn" : ""
+                  }`}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </section>
 
-        {(problem.problem_frequency || problem.existing_solutions || problem.pricing_estimate) && (
+        {problem.solution_approach && (
+          <section className="section solution-section">
+            <h2>[ Solution ]</h2>
+            <p className="solution-text">{problem.solution_approach}</p>
+          </section>
+        )}
+
+        {(problem.problem_frequency ||
+          problem.existing_solutions ||
+          problem.pricing_estimate ||
+          problem.problem_author) && (
           <section className="section analysis-section">
             <h2>[ Problem Analysis ]</h2>
             <div className="analysis-grid">
@@ -107,15 +141,22 @@ export default function ProblemDetailPage() {
 
               {problem.existing_solutions && (
                 <div className="analysis-card">
-                  <h3>Existing Solutions</h3>
+                  <h3>Attempts / Existing Solutions</h3>
                   <p>{problem.existing_solutions}</p>
                 </div>
               )}
 
               {problem.pricing_estimate && (
                 <div className="analysis-card analysis-card--accent">
-                  <h3>Pricing Estimate</h3>
+                  <h3>Willingness to Pay</h3>
                   <p>{problem.pricing_estimate}</p>
+                </div>
+              )}
+
+              {problem.problem_author && (
+                <div className="analysis-card">
+                  <h3>Problem Author</h3>
+                  <p>{problem.problem_author}</p>
                 </div>
               )}
             </div>

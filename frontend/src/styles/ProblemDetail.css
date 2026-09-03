@@ -63,6 +63,60 @@
   max-width: 72ch;
 }
 
+/* ---------- Source link badge (tilted arrow) ---------- */
+
+.source-link-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  text-decoration: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.source-link-badge:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+
+.source-arrow {
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: transform 150ms ease;
+}
+
+.source-link-badge:hover .source-arrow {
+  transform: translate(2px, -2px);
+}
+
+/* ---------- Solution tags + approach ---------- */
+
+.solution-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 1.25rem;
+}
+
+.solution-section .solution-text {
+  font-family: var(--sans);
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--ink);
+  max-width: 72ch;
+  border-left: 3px solid var(--accent);
+  padding-left: 1rem;
+}
+
 /* ---------- Analysis ---------- */
 
 .analysis-grid {
