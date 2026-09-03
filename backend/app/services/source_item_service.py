@@ -39,9 +39,25 @@ _ITEM_FIELDS = (
 )
 
 
+def _is_enrichment_complete(item: SourceItem | None) -> bool:
+    if item is None:
+        return False
+    tags = item.solution_tags
+    if not tags:
+        return False
+    if tags == ["Not Software-Solvable"]:
+        return True
+    return bool(
+        item.tech_stack_options
+        and item.recommended_tech_stack
+        and item.tech_stack_justification
+    )
+
+
 def _apply_fields(item: SourceItem, problem: dict) -> None:
     for field in _ITEM_FIELDS:
-        setattr(item, field, problem.get(field))
+        if field in problem:
+            setattr(item, field, problem[field])
     item.fetched_at = datetime.now(timezone.utc)
 
 
@@ -91,8 +107,7 @@ async def fetch_items_for_source(
     pending = [
         p
         for p in problems
-        if (existing_by_ext.get(p["external_id"]) is None)
-        or (not existing_by_ext[p["external_id"]].solution_tags)
+        if not _is_enrichment_complete(existing_by_ext.get(p["external_id"]))
     ]
 
     semaphore = asyncio.Semaphore(_ENRICH_CONCURRENCY)
