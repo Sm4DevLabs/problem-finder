@@ -61,3 +61,20 @@ export interface FetchResult {
   items_updated: number;
   duration_seconds: number;
 }
+
+export interface FacetTag {
+  tag: string;
+  count: number;
+}
+
+export interface FacetSource {
+  source_id: string;
+  name: string;
+  count: number;
+}
+
+export interface Facets {
+  total: number;
+  tags: FacetTag[];
+  sources: FacetSource[];
+}
