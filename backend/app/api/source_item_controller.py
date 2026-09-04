@@ -31,6 +31,21 @@ async def fetch_items(source_id: UUID, session: DbSession, limit: int | None = N
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/facets")
+async def get_facets(
+    session: DbSession,
+    source_id: UUID | None = None,
+    tag: str | None = None,
+    search: str | None = None,
+):
+    """Faceted counts for the filter UI: total matching the active filters, plus
+    per-tag and per-source counts (each respecting the other active filters).
+
+    Defined before ``/{source_id}`` so the literal path wins over the UUID route.
+    """
+    return await source_item_service.get_facets(session, source_id, tag, search)
+
+
 @router.get("/{source_id}", response_model=list[SourceItemResponse])
 async def get_items_by_source(source_id: UUID, limit: int = 50, session: DbSession = None):
     """Get all items for a specific source."""
@@ -39,9 +54,23 @@ async def get_items_by_source(source_id: UUID, limit: int = 50, session: DbSessi
 
 
 @router.get("/", response_model=list[SourceItemResponse])
-async def get_all_items(limit: int = 100, offset: int = 0, session: DbSession = None):
-    """Get a page of items across all sources (supports limit/offset paging)."""
-    items = await source_item_service.get_all_items(session, limit, offset)
+async def get_all_items(
+    limit: int = 100,
+    offset: int = 0,
+    source_id: UUID | None = None,
+    tag: str | None = None,
+    search: str | None = None,
+    session: DbSession = None,
+):
+    """Get a page of items across all sources with optional filters.
+
+    - ``source_id``: only items from this source
+    - ``tag``: only items whose solution_tags contains this tag
+    - ``search``: case-insensitive match on title/description
+    """
+    items = await source_item_service.get_all_items(
+        session, limit, offset, source_id=source_id, tag=tag, search=search
+    )
     return items
 
 
