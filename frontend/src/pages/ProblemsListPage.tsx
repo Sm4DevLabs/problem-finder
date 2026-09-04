@@ -1,19 +1,33 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Problem } from "../types/problem";
+import type { Facets, Problem } from "../types/problem";
 import { sourceLabel } from "../types/problem";
 import "../styles/ProblemsList.css";
 
 const API = "http://localhost:8000/api/source-items/";
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 20;
+const EMPTY_FACETS: Facets = { total: 0, tags: [], sources: [] };
+
+function buildQuery(params: Record<string, string>): string {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v && v !== "ALL") q.set(k, v);
+  });
+  return q.toString();
+}
 
 export default function ProblemsListPage() {
   const [problems, setProblems] = useState<Problem[]>([]);
+  const [facets, setFacets] = useState<Facets>(EMPTY_FACETS);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [tagFilter, setTagFilter] = useState<string>("ALL");
-  const [query, setQuery] = useState("");
+
+  // Active filters (server-side)
+  const [sourceId, setSourceId] = useState<string>("ALL");
+  const [tag, setTag] = useState<string>("ALL");
+  const [query, setQuery] = useState<string>("");
+  const [debouncedQuery, setDebouncedQuery] = useState<string>("");
 
   const navigate = useNavigate();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -21,14 +35,82 @@ export default function ProblemsListPage() {
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
 
+  // Debounce the search box so we don't hit the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 350);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const filterParams = useCallback(
+    () => ({ source_id: sourceId, tag, search: debouncedQuery }),
+    [sourceId, tag, debouncedQuery]
+  );
+
+  const fetchPage = useCallback(
+    async (offset: number): Promise<Problem[]> => {
+      const qs = buildQuery({ ...filterParams(), limit: String(PAGE_SIZE), offset: String(offset) });
+      const res = await fetch(`${API}?${qs}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    [filterParams]
+  );
+
+  const fetchFacets = useCallback(async (): Promise<Facets> => {
+    const qs = buildQuery(filterParams());
+    const res = await fetch(`${API}facets${qs ? `?${qs}` : ""}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }, [filterParams]);
+
+  // Reload from scratch whenever a filter changes.
+  useEffect(() => {
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset UI state on filter change
+    setLoading(true);
+    loadingRef.current = true;
+    offsetRef.current = 0;
+    hasMoreRef.current = true;
+    setHasMore(true);
+
+    (async () => {
+      try {
+        const [firstPage, facetData] = await Promise.all([fetchPage(0), fetchFacets()]);
+        if (cancelled) return;
+        setProblems(firstPage);
+        setFacets(facetData);
+        offsetRef.current = firstPage.length;
+        if (firstPage.length < PAGE_SIZE) {
+          hasMoreRef.current = false;
+          setHasMore(false);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Error loading problems:", e);
+          setProblems([]);
+          setFacets(EMPTY_FACETS);
+          hasMoreRef.current = false;
+          setHasMore(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          loadingRef.current = false;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchPage, fetchFacets]);
+
   const loadMore = useCallback(async () => {
     if (loadingRef.current || !hasMoreRef.current) return;
     loadingRef.current = true;
     setLoadingMore(true);
     try {
-      const res = await fetch(`${API}?limit=${PAGE_SIZE}&offset=${offsetRef.current}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const page: Problem[] = await res.json();
+      const page = await fetchPage(offsetRef.current);
       setProblems((prev) => {
         const seen = new Set(prev.map((p) => p.id));
         return [...prev, ...page.filter((p) => !seen.has(p.id))];
@@ -38,22 +120,16 @@ export default function ProblemsListPage() {
         hasMoreRef.current = false;
         setHasMore(false);
       }
-    } catch (error) {
-      console.error("Error loading problems:", error);
+    } catch (e) {
+      console.error("Error loading more:", e);
       hasMoreRef.current = false;
       setHasMore(false);
     } finally {
-      loadingRef.current = false;
       setLoadingMore(false);
-      setLoading(false);
+      loadingRef.current = false;
     }
-  }, []);
+  }, [fetchPage]);
 
-  useEffect(() => {
-    loadMore();
-  }, [loadMore]);
-
-  // Prefetch the next page shortly before the sentinel scrolls into view.
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -67,25 +143,12 @@ export default function ProblemsListPage() {
     return () => observer.disconnect();
   }, [loadMore]);
 
-  const tagKeys = useMemo(() => {
-    const counts = new Map<string, number>();
-    problems.forEach((p) => {
-      (p.solution_tags ?? []).forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1));
-    });
-    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  }, [problems]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return problems.filter((p) => {
-      if (tagFilter !== "ALL" && !(p.solution_tags ?? []).includes(tagFilter)) return false;
-      if (q) {
-        const haystack = `${p.title} ${p.description ?? ""}`.toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [problems, tagFilter, query]);
+  const hasActiveFilter = sourceId !== "ALL" || tag !== "ALL" || debouncedQuery !== "";
+  const clearFilters = () => {
+    setSourceId("ALL");
+    setTag("ALL");
+    setQuery("");
+  };
 
   return (
     <div className="problems-container">
@@ -97,7 +160,32 @@ export default function ProblemsListPage() {
         <p className="feed-tagline">Find a real problem. Build it. Ship it.</p>
       </div>
 
-      <div className="problems-toolbar">
+      {/* Compact, scalable filter toolbar: two dropdowns + search */}
+      <div className="filter-toolbar">
+        <label className="filter-field">
+          <span className="filter-label">SOURCE</span>
+          <select className="filter-select" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+            <option value="ALL">All sources</option>
+            {facets.sources.map((s) => (
+              <option key={s.source_id} value={s.source_id}>
+                {s.name} ({s.count})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="filter-field">
+          <span className="filter-label">SOLVABLE BY</span>
+          <select className="filter-select" value={tag} onChange={(e) => setTag(e.target.value)}>
+            <option value="ALL">All solutions</option>
+            {facets.tags.map((t) => (
+              <option key={t.tag} value={t.tag}>
+                {t.tag} ({t.count})
+              </option>
+            ))}
+          </select>
+        </label>
+
         <input
           type="text"
           className="record-search"
@@ -105,42 +193,27 @@ export default function ProblemsListPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-      </div>
 
-      {tagKeys.length > 0 && (
-        <div className="tag-filter-bar">
-          <span className="tag-filter-label">SOLVABLE BY /</span>
-          <button
-            className={`tag-chip ${tagFilter === "ALL" ? "active" : ""}`}
-            onClick={() => setTagFilter("ALL")}
-          >
-            ALL
+        {hasActiveFilter && (
+          <button className="clear-filters" onClick={clearFilters}>
+            CLEAR ✕
           </button>
-          {tagKeys.map(([tag, count]) => (
-            <button
-              key={tag}
-              className={`tag-chip ${tagFilter === tag ? "active" : ""} ${
-                tag === "Not Software-Solvable" ? "tag-chip--warn" : ""
-              }`}
-              onClick={() => setTagFilter(tag)}
-            >
-              {tag} ({count})
-            </button>
-          ))}
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="record-count-strip">
         {loading
           ? "LOADING PROBLEMS..."
-          : `SHOWING ${String(filtered.length).padStart(3, "0")} PROBLEM${filtered.length === 1 ? "" : "S"}`}
+          : `SHOWING ${facets.total} PROBLEM${facets.total === 1 ? "" : "S"}${
+              hasActiveFilter ? " (FILTERED)" : ""
+            }`}
       </div>
 
-      {!loading && filtered.length === 0 ? (
+      {!loading && problems.length === 0 ? (
         <div className="empty-state">No problems match your filters.</div>
       ) : (
         <div className="record-list">
-          {filtered.map((problem, idx) => (
+          {problems.map((problem, idx) => (
             <div
               key={problem.id}
               className="record-row"
@@ -163,14 +236,14 @@ export default function ProblemsListPage() {
                 )}
                 {problem.solution_tags && problem.solution_tags.length > 0 && (
                   <div className="record-solution-tags">
-                    {problem.solution_tags.map((tag) => (
+                    {problem.solution_tags.map((t) => (
                       <span
-                        key={tag}
+                        key={t}
                         className={`badge badge--solution ${
-                          tag === "Not Software-Solvable" ? "badge--warn" : ""
+                          t === "Not Software-Solvable" ? "badge--warn" : ""
                         }`}
                       >
-                        {tag}
+                        {t}
                       </span>
                     ))}
                   </div>
@@ -182,7 +255,6 @@ export default function ProblemsListPage() {
         </div>
       )}
 
-      {/* Infinite-scroll sentinel + status */}
       <div ref={sentinelRef} className="scroll-sentinel" aria-hidden="true" />
       {!loading && loadingMore && <div className="feed-status">LOADING MORE...</div>}
       {!loading && !hasMore && problems.length > 0 && (

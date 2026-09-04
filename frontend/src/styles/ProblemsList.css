@@ -63,6 +63,91 @@
   margin-top: 0.5rem;
 }
 
+/* ---------- Filter toolbar (dropdowns + search) ---------- */
+
+.filter-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--ink);
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.filter-label {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+}
+
+.filter-select {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: var(--border-w) solid var(--ink);
+  background: var(--paper-raised);
+  color: var(--ink);
+  padding: 0.5rem 0.6rem;
+  min-height: 40px;
+  min-width: 200px;
+  cursor: pointer;
+}
+
+.filter-select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.filter-toolbar .record-search {
+  flex: 1 1 200px;
+  min-height: 40px;
+  align-self: flex-end;
+}
+
+.clear-filters {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: var(--paper);
+  padding: 0.5rem 0.75rem;
+  min-height: 40px;
+  align-self: flex-end;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.clear-filters:hover {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+@media (max-width: 768px) {
+  .filter-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filter-select,
+  .filter-toolbar .record-search {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 /* ---------- Toolbar ---------- */
 
 .problems-toolbar {

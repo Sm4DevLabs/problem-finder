@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.registry import ADAPTERS
@@ -154,17 +154,119 @@ async def get_items_for_source(session: AsyncSession, source_id: UUID, limit: in
     return result.scalars().all()
 
 
+def _apply_item_filters(stmt, source_id: UUID | None, tag: str | None, search: str | None):
+    """Apply optional source / solution-tag / text-search filters to a query."""
+    if source_id is not None:
+        stmt = stmt.where(SourceItem.source_id == source_id)
+    if tag:
+        # jsonb_exists avoids the `?` operator (which clashes with param styles).
+        stmt = stmt.where(
+            text("jsonb_exists(source_items.solution_tags::jsonb, :tag)").bindparams(tag=tag)
+        )
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        stmt = stmt.where(
+            or_(SourceItem.title.ilike(like), SourceItem.description.ilike(like))
+        )
+    return stmt
+
+
 async def get_all_items(
-    session: AsyncSession, limit: int = 100, offset: int = 0
+    session: AsyncSession,
+    limit: int = 100,
+    offset: int = 0,
+    source_id: UUID | None = None,
+    tag: str | None = None,
+    search: str | None = None,
 ) -> list[SourceItem]:
-    """Get a page of items across all sources (newest first, stable ordering)."""
-    result = await session.execute(
-        select(SourceItem)
-        .order_by(SourceItem.fetched_at.desc(), SourceItem.id.desc())
-        .limit(limit)
-        .offset(offset)
-    )
+    """Get a page of items across all sources (newest first, stable ordering),
+    optionally filtered by source, solution tag, and/or text search."""
+    stmt = _apply_item_filters(select(SourceItem), source_id, tag, search)
+    stmt = stmt.order_by(SourceItem.fetched_at.desc(), SourceItem.id.desc()).limit(limit).offset(offset)
+    result = await session.execute(stmt)
     return result.scalars().all()
+
+
+async def get_facets(
+    session: AsyncSession,
+    source_id: UUID | None = None,
+    tag: str | None = None,
+    search: str | None = None,
+) -> dict:
+    """Faceted counts for the filter UI.
+
+    - ``total``   : problems matching ALL active filters (for the results header).
+    - ``tags``    : per-tag counts, respecting source + search (not the tag itself),
+                    so tag options always show reachable totals.
+    - ``sources`` : per-source counts, respecting tag + search (not the source),
+                    so only sources with matching items appear.
+    """
+    # total (all active filters)
+    total_stmt = _apply_item_filters(
+        select(func.count()).select_from(SourceItem), source_id, tag, search
+    )
+    total = (await session.execute(total_stmt)).scalar_one()
+
+    # tag facet: respect source + search, ignore the active tag
+    tag_where, tag_params = _sql_filters(source_id=source_id, search=search)
+    tag_rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT t.tag AS tag, count(*) AS count
+                FROM source_items si,
+                     LATERAL jsonb_array_elements_text(si.solution_tags::jsonb) AS t(tag)
+                WHERE si.solution_tags IS NOT NULL AND si.solution_tags::text <> 'null'
+                {tag_where}
+                GROUP BY t.tag
+                ORDER BY count DESC, t.tag ASC
+                """
+            ).bindparams(**tag_params)
+        )
+    ).all()
+
+    # source facet: respect tag + search, ignore the active source
+    src_where, src_params = _sql_filters(tag=tag, search=search)
+    src_rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT s.id AS source_id, s.name AS name, count(*) AS count
+                FROM source_items si
+                JOIN sources s ON s.id = si.source_id
+                WHERE 1=1
+                {src_where}
+                GROUP BY s.id, s.name
+                ORDER BY count DESC, s.name ASC
+                """
+            ).bindparams(**src_params)
+        )
+    ).all()
+
+    return {
+        "total": total,
+        "tags": [{"tag": r.tag, "count": r.count} for r in tag_rows],
+        "sources": [{"source_id": str(r.source_id), "name": r.name, "count": r.count} for r in src_rows],
+    }
+
+
+def _sql_filters(
+    source_id: UUID | None = None, tag: str | None = None, search: str | None = None
+) -> tuple[str, dict]:
+    """Build a WHERE fragment (prefixed with AND) + bind params for raw facet SQL."""
+    clauses: list[str] = []
+    params: dict = {}
+    if source_id is not None:
+        # psycopg3 adapts a uuid.UUID to a Postgres uuid; avoid uuid = text errors.
+        clauses.append("AND si.source_id = :source_id")
+        params["source_id"] = source_id
+    if tag:
+        clauses.append("AND jsonb_exists(si.solution_tags::jsonb, :tag)")
+        params["tag"] = tag
+    if search and search.strip():
+        clauses.append("AND (si.title ILIKE :search OR si.description ILIKE :search)")
+        params["search"] = f"%{search.strip()}%"
+    return "\n".join(clauses), params
 
 
 async def get_item_by_id(session: AsyncSession, item_id: UUID) -> SourceItem | None:
