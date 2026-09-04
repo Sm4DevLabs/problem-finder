@@ -6,12 +6,12 @@ Published CMS size is the success criterion (~141 curated records), not the
 site's cumulative "10,000+" marketing figure.
 """
 
-from app.connectors.crawlviel_client import map_cms_item, scrape_extract_all
+from app.connectors.clients.crawlviel_client import map_cms_item, scrape_extract_all
 
 RAZORPAY_FIX_MY_ITCH_URL = "https://razorpay.com/m/fix-my-itch/"
 
 
-async def fetch_problems(limit: int | None = None) -> list[dict]:
+async def fetch(limit: int | None = None) -> list[dict]:
     """
     Fetch published Fix My Itch problems via Crawlviel.
 

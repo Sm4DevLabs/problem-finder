@@ -24,7 +24,7 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-from app.connectors.crawlviel_client import scrape_extract_all
+from app.connectors.clients.crawlviel_client import scrape_extract_all
 
 PROBLEMHUNT_URL = "https://problemhunt.pro"
 
@@ -99,7 +99,7 @@ def _map_item(item: dict) -> dict | None:
     }
 
 
-async def fetch_problems(limit: int | None = None) -> list[dict]:
+async def fetch(limit: int | None = None) -> list[dict]:
     """
     Fetch published ProblemHunt problems via Crawlviel.
 

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from app.database.database_session import settings
 
 
-async def fetch_problems(limit: int = 20) -> list[dict]:
+async def fetch(limit: int = 20) -> list[dict]:
     """
     Fetch problems from Razorpay Fix My Itch GitHub organization.
 

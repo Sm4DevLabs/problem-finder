@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.connectors import problemhunt_connector, razorpay_connector
+from app.connectors.registry import ADAPTERS
 from app.database.database_session import settings
 from app.models.source_item_model import SourceItem
 from app.models.source_model import Source
@@ -136,25 +136,11 @@ async def fetch_items_for_source(
 
 
 async def _fetch_from_connector(source_name: str, limit: int) -> list[dict]:
-    """Route to appropriate connector based on source name."""
-    if source_name == "ProblemHunt":
-        # Crawlviel Tilda Feed API — all published CMS records
-        return await problemhunt_connector.fetch_problems(limit=limit)
-    elif source_name == "Razorpay Fix My Itch":
-        # Crawlviel Framer CMS — published curated set (not marketing 10k+)
-        try:
-            from app.connectors import razorpay_website_connector
-
-            print("Using Crawlviel Framer connector for Fix My Itch...")
-            problems = await razorpay_website_connector.fetch_problems(limit=limit)
-            if problems:
-                return problems
-        except Exception as e:
-            print(f"Crawlviel Razorpay connector failed: {e}, falling back to GitHub connector")
-
-        return await razorpay_connector.fetch_problems(limit=limit)
-    else:
+    """Route to the adapter registered for this source (app/connectors/registry.py)."""
+    adapter = ADAPTERS.get(source_name)
+    if not adapter:
         raise Exception(f"No connector implemented for source: {source_name}")
+    return await adapter(limit)
 
 
 async def get_items_for_source(session: AsyncSession, source_id: UUID, limit: int = 50) -> list[SourceItem]:
